@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: probe-sim
+  labels:
+    app: probe-sim
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: probe-sim
+  template:
+    metadata:
+      labels:
+        app: probe-sim
+    spec:
+      containers:
+        - name: probe-sim
+          image: ghcr.io/philipjonasfranz/k8s-probe-simulator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            # Configurable startup delay, app returns 503 until timer has completed
+            - name: STARTUP_DELAY_SECONDS
+              value: "5"
+          # Startup probe: wait up to 2x10s = 20s until the Pod is restarted
+          startupProbe:
+            httpGet:
+              path: /startupz
+              port: 8080
+            failureThreshold: 2
+            periodSeconds: 10
+          # Liveness Probe: restart pod if probe fails three times
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness Probe: Remove Pod from service if it does not answer in time
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: probe-sim
+  labels:
+    app: probe-sim
+spec:
+  type: ClusterIP
+  selector:
+    app: probe-sim
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
